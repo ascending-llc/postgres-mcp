@@ -95,9 +95,7 @@ async def get_current_database_name() -> str:
         return ""
 
 
-async def get_sql_driver_for_database(
-        database_name: str
-) -> Union[SqlDriver, SafeSqlDriver]:
+async def get_sql_driver_for_database(database_name: str) -> Union[SqlDriver, SafeSqlDriver]:
     """
     Get SQL driver for a specific database.
     Reuses the main db_connection if database_name matches.
@@ -120,9 +118,7 @@ async def get_sql_driver_for_database(
     return await _create_new_database_connection(database_name)
 
 
-async def _get_cached_driver(
-        database_name: str
-) -> Optional[Union[SqlDriver, SafeSqlDriver]]:
+async def _get_cached_driver(database_name: str) -> Optional[Union[SqlDriver, SafeSqlDriver]]:
     """Retrieve driver from cache if valid."""
     if database_name not in db_connections_cache:
         return None
@@ -134,17 +130,13 @@ async def _get_cached_driver(
         return _wrap_driver_for_access_mode(SqlDriver(conn=cached_pool))
 
     # Remove invalid cached connection
-    logger.warning(
-        f"Cached connection for {database_name} is invalid, removing from cache"
-    )
+    logger.warning(f"Cached connection for {database_name} is invalid, removing from cache")
     await cached_pool.close()
     del db_connections_cache[database_name]
     return None
 
 
-async def _create_new_database_connection(
-        database_name: str
-) -> Union[SqlDriver, SafeSqlDriver]:
+async def _create_new_database_connection(database_name: str) -> Union[SqlDriver, SafeSqlDriver]:
     """Create and cache a new database connection."""
     # Validate base connection URL exists
     if not db_connection.connection_url:
@@ -164,10 +156,7 @@ async def _create_new_database_connection(
 
     except Exception as e:
         logger.error(f"Error connecting to database {database_name}: {e}")
-        raise ValueError(
-            f"Cannot connect to database '{database_name}': "
-            f"{obfuscate_password(str(e))}"
-        )
+        raise ValueError(f"Cannot connect to database '{database_name}': {obfuscate_password(str(e))}")
 
 
 def _build_database_url(database_name: str) -> str:
@@ -178,9 +167,7 @@ def _build_database_url(database_name: str) -> str:
     return str(urlunparse(parsed._replace(path=new_path)))
 
 
-def _wrap_driver_for_access_mode(
-        driver: SqlDriver
-) -> Union[SqlDriver, SafeSqlDriver]:
+def _wrap_driver_for_access_mode(driver: SqlDriver) -> Union[SqlDriver, SafeSqlDriver]:
     """Wrap driver with SafeSqlDriver if in restricted access mode."""
     if current_access_mode == AccessMode.RESTRICTED:
         return SafeSqlDriver(sql_driver=driver, timeout=30)
@@ -414,12 +401,14 @@ async def get_database_tables_schema(database_name: str) -> ResponseType:
                 columns = []
                 if col_rows:
                     for r in col_rows:
-                        columns.append({
-                            "column": r.cells["column_name"],
-                            "data_type": r.cells["data_type"],
-                            "is_nullable": r.cells["is_nullable"],
-                            "default": r.cells["column_default"],
-                        })
+                        columns.append(
+                            {
+                                "column": r.cells["column_name"],
+                                "data_type": r.cells["data_type"],
+                                "is_nullable": r.cells["is_nullable"],
+                                "default": r.cells["column_default"],
+                            }
+                        )
 
                 con_rows = await SafeSqlDriver.execute_param_query(
                     sql_driver,
@@ -460,10 +449,7 @@ async def get_database_tables_schema(database_name: str) -> ResponseType:
                 indexes = []
                 if idx_rows:
                     for idx_row in idx_rows:
-                        indexes.append({
-                            "name": idx_row.cells["indexname"],
-                            "definition": idx_row.cells["indexdef"]
-                        })
+                        indexes.append({"name": idx_row.cells["indexname"], "definition": idx_row.cells["indexdef"]})
 
                 table_info = {
                     "database": database_name,
@@ -472,7 +458,7 @@ async def get_database_tables_schema(database_name: str) -> ResponseType:
                     "type": "table",
                     "columns": columns,
                     "constraints": constraints_list,
-                    "indexes": indexes
+                    "indexes": indexes,
                 }
 
                 tables_schema.append(table_info)
@@ -527,12 +513,14 @@ async def get_database_views_schema(database_name: str) -> ResponseType:
                 columns = []
                 if col_rows:
                     for r in col_rows:
-                        columns.append({
-                            "column": r.cells["column_name"],
-                            "data_type": r.cells["data_type"],
-                            "is_nullable": r.cells["is_nullable"],
-                            "default": r.cells["column_default"]
-                        })
+                        columns.append(
+                            {
+                                "column": r.cells["column_name"],
+                                "data_type": r.cells["data_type"],
+                                "is_nullable": r.cells["is_nullable"],
+                                "default": r.cells["column_default"],
+                            }
+                        )
 
                 con_rows = await SafeSqlDriver.execute_param_query(
                     sql_driver,
@@ -568,7 +556,7 @@ async def get_database_views_schema(database_name: str) -> ResponseType:
                     "type": "view",
                     "columns": columns,
                     "constraints": constraints_list,
-                    "indexes": []
+                    "indexes": [],
                 }
                 views_schema.append(view_info)
 
@@ -578,6 +566,7 @@ async def get_database_views_schema(database_name: str) -> ResponseType:
     except Exception as e:
         logger.error(f"Error getting views schema for database {database_name}: {e}")
         return format_error_response(str(e))
+
 
 @mcp.resource("postgres://{database_name}/info")
 async def get_database_info(database_name: str) -> ResponseType:
