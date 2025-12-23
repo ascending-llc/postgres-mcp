@@ -34,6 +34,7 @@ class MockCell:
 
 class MockExplainPlanArtifact(ExplainPlanArtifact):
     """Mock ExplainPlanArtifact that inherits from the real class."""
+
     def __init__(self, plan_data):
         self.plan_data = plan_data
         # Don't call super().__init__() to avoid validation
@@ -134,10 +135,12 @@ async def test_explain_query_with_hypothetical_indexes_integration():
     mock_execute_query = AsyncMock(return_value=[MockCell({"exists": 1})])
     mock_safe_driver.execute_query = mock_execute_query
     # Also need to mock the execute_query for get_postgres_version
-    mock_safe_driver.execute_query = AsyncMock(side_effect=[
-        [MockCell({"server_version": "16.2"})],  # For get_postgres_version
-        [MockCell({"exists": 1})]  # For check_extension
-    ])
+    mock_safe_driver.execute_query = AsyncMock(
+        side_effect=[
+            [MockCell({"server_version": "16.2"})],  # For get_postgres_version
+            [MockCell({"exists": 1})],  # For check_extension
+        ]
+    )
 
     # Create a mock ExplainPlanTool
     mock_explain_tool = MagicMock()
@@ -177,11 +180,13 @@ async def test_explain_query_missing_hypopg_integration():
     # Create mock SafeSqlDriver that returns empty result (extension not exists)
     mock_safe_driver = MagicMock()
     # We need to mock execute_query for both get_postgres_version and check_extension
-    mock_safe_driver.execute_query = AsyncMock(side_effect=[
-        [MockCell({"server_version": "16.2"})],  # For get_postgres_version
-        [],  # For check_extension (pg_extension query)
-        [],  # For check_extension (pg_available_extensions query)
-    ])
+    mock_safe_driver.execute_query = AsyncMock(
+        side_effect=[
+            [MockCell({"server_version": "16.2"})],  # For get_postgres_version
+            [],  # For check_extension (pg_extension query)
+            [],  # For check_extension (pg_available_extensions query)
+        ]
+    )
 
     # Create a mock ExplainPlanTool (it shouldn't be called in this case)
     mock_explain_tool = MagicMock()
