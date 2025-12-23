@@ -1,5 +1,6 @@
-import types
-from typing import Any, List
+from typing import Any
+from typing import List
+
 import mcp.types as types
 
 ResponseType = List[types.TextContent | types.ImageContent | types.EmbeddedResource]

@@ -1,7 +1,9 @@
 import logging
-import mcp.types as types
 from typing import List
 from typing import Optional
+
+import mcp.types as types
+
 from .sql import SafeSqlDriver
 from .utils.reponse import format_error_response
 from .utils.reponse import format_text_response
@@ -162,7 +164,7 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
         sql_driver = await get_sql_driver_for_database(database_name)
         schema_filter = f"AND schema_name = '{schema_name}'"
         schema_query = f"""
-            SELECT 
+            SELECT
                 schema_name,
                 schema_owner,
                 CASE
@@ -189,13 +191,13 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
 
         # Get all tables with metadata (filtered by schema if provided)
         table_query = f"""
-            SELECT 
-                t.table_schema, 
+            SELECT
+                t.table_schema,
                 t.table_name,
                 pg_size_pretty(pg_total_relation_size(quote_ident(t.table_schema) || '.' || quote_ident(t.table_name))) as table_size,
-                (SELECT reltuples::bigint 
-                 FROM pg_class c 
-                 JOIN pg_namespace n ON n.oid = c.relnamespace 
+                (SELECT reltuples::bigint
+                 FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE n.nspname = t.table_schema AND c.relname = t.table_name) as estimated_rows,
                 obj_description((quote_ident(t.table_schema) || '.' || quote_ident(t.table_name))::regclass) as table_comment
             FROM information_schema.tables t
@@ -220,7 +222,7 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
                 col_rows = await SafeSqlDriver.execute_param_query(
                     sql_driver,
                     """
-                    SELECT 
+                    SELECT
                         c.column_name,
                         c.data_type,
                         c.is_nullable,
@@ -231,9 +233,9 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
                         c.numeric_scale,
                         pgd.description as column_comment
                     FROM information_schema.columns c
-                    LEFT JOIN pg_catalog.pg_statio_all_tables psat 
+                    LEFT JOIN pg_catalog.pg_statio_all_tables psat
                         ON c.table_schema = psat.schemaname AND c.table_name = psat.relname
-                    LEFT JOIN pg_catalog.pg_description pgd 
+                    LEFT JOIN pg_catalog.pg_description pgd
                         ON psat.relid = pgd.objoid AND c.ordinal_position = pgd.objsubid
                     WHERE c.table_schema = {} AND c.table_name = {}
                     ORDER BY c.ordinal_position
@@ -265,21 +267,21 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
                 con_rows = await SafeSqlDriver.execute_param_query(
                     sql_driver,
                     """
-                    SELECT 
+                    SELECT
                         tc.constraint_name,
                         tc.constraint_type,
                         kcu.column_name,
-                        CASE 
+                        CASE
                             WHEN tc.constraint_type = 'FOREIGN KEY' THEN ccu.table_schema
-                            ELSE NULL 
+                            ELSE NULL
                         END as foreign_table_schema,
-                        CASE 
+                        CASE
                             WHEN tc.constraint_type = 'FOREIGN KEY' THEN ccu.table_name
-                            ELSE NULL 
+                            ELSE NULL
                         END as foreign_table_name,
-                        CASE 
+                        CASE
                             WHEN tc.constraint_type = 'FOREIGN KEY' THEN ccu.column_name
-                            ELSE NULL 
+                            ELSE NULL
                         END as foreign_column_name
                     FROM information_schema.table_constraints AS tc
                     LEFT JOIN information_schema.key_column_usage AS kcu
@@ -319,7 +321,7 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
                 idx_rows = await SafeSqlDriver.execute_param_query(
                     sql_driver,
                     """
-                    SELECT 
+                    SELECT
                         i.indexname,
                         i.indexdef,
                         pg_size_pretty(pg_relation_size(quote_ident(i.schemaname) || '.' || quote_ident(i.indexname))) as index_size,
@@ -404,7 +406,7 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
 
         # Get all user schemas (or specific schema if provided)
         schema_query = f"""
-            SELECT 
+            SELECT
                 schema_name,
                 schema_owner,
                 CASE
@@ -435,13 +437,13 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
 
         # Get all views with metadata (filtered by schema if provided)
         view_query = f"""
-            SELECT 
-                t.table_schema, 
+            SELECT
+                t.table_schema,
                 t.table_name,
                 v.view_definition,
                 obj_description((quote_ident(t.table_schema) || '.' || quote_ident(t.table_name))::regclass) as view_comment
             FROM information_schema.tables t
-            LEFT JOIN information_schema.views v 
+            LEFT JOIN information_schema.views v
                 ON t.table_schema = v.table_schema AND t.table_name = v.table_name
             WHERE t.table_type = 'VIEW'
               AND t.table_schema NOT LIKE 'pg_%'
@@ -464,7 +466,7 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
                 col_rows = await SafeSqlDriver.execute_param_query(
                     sql_driver,
                     """
-                    SELECT 
+                    SELECT
                         c.column_name,
                         c.data_type,
                         c.is_nullable,
@@ -475,9 +477,9 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
                         c.numeric_scale,
                         pgd.description as column_comment
                     FROM information_schema.columns c
-                    LEFT JOIN pg_catalog.pg_statio_all_tables psat 
+                    LEFT JOIN pg_catalog.pg_statio_all_tables psat
                         ON c.table_schema = psat.schemaname AND c.table_name = psat.relname
-                    LEFT JOIN pg_catalog.pg_description pgd 
+                    LEFT JOIN pg_catalog.pg_description pgd
                         ON psat.relid = pgd.objoid AND c.ordinal_position = pgd.objsubid
                     WHERE c.table_schema = {} AND c.table_name = {}
                     ORDER BY c.ordinal_position
@@ -585,7 +587,7 @@ async def _get_all_schemas_impl(database_name: str) -> ResponseType:
 
         rows = await sql_driver.execute_query(
             """
-            SELECT 
+            SELECT
                 schema_name,
                 schema_owner,
                 CASE
@@ -626,7 +628,7 @@ async def _get_databases_info_impl(database_name: Optional[str] = None) -> Respo
             rows = await SafeSqlDriver.execute_param_query(
                 sql_driver,
                 """
-                SELECT 
+                SELECT
                     datname as database_name,
                     pg_catalog.pg_get_userbyid(datdba) as owner,
                     pg_encoding_to_char(encoding) as encoding,
@@ -653,7 +655,7 @@ async def _get_databases_info_impl(database_name: Optional[str] = None) -> Respo
 
             rows = await sql_driver.execute_query(
                 """
-                SELECT 
+                SELECT
                     datname as database_name,
                     pg_catalog.pg_get_userbyid(datdba) as owner,
                     pg_encoding_to_char(encoding) as encoding,

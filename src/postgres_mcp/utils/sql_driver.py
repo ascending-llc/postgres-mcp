@@ -1,8 +1,15 @@
 import logging
-from typing import Dict, Optional, Union
-from urllib.parse import urlparse, urlunparse
+from typing import Dict
+from typing import Optional
+from typing import Union
+from urllib.parse import urlparse
+from urllib.parse import urlunparse
+
 from ..moldes.model import AccessMode
-from ..sql import DbConnPool, SafeSqlDriver, SqlDriver, obfuscate_password
+from ..sql import DbConnPool
+from ..sql import SafeSqlDriver
+from ..sql import SqlDriver
+from ..sql import obfuscate_password
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +131,7 @@ async def _create_new_database_connection(database_name: str) -> Union[SqlDriver
 
     except Exception as e:
         logger.error(f"Error connecting to database {database_name}: {e}")
-        raise ValueError(f"Cannot connect to database '{database_name}': {obfuscate_password(str(e))}")
+        raise ValueError(f"Cannot connect to database '{database_name}': {obfuscate_password(str(e))}") from e
 
 
 def _build_database_url(database_name: str) -> str:

@@ -5,17 +5,16 @@ import logging
 import os
 import signal
 import sys
-from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 from typing import List
 from typing import Literal
-from typing import Union
+from urllib.parse import urlparse
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from pydantic import validate_call
-from urllib.parse import urlparse, urlunparse
+
 from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
 from .artifacts import ErrorResult
@@ -27,7 +26,9 @@ from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
 from .moldes.model import AccessMode
-from .resource import dynamically_register_resources, format_error_response, format_text_response
+from .resource import dynamically_register_resources
+from .resource import format_error_response
+from .resource import format_text_response
 from .sql import SafeSqlDriver
 from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password
