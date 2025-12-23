@@ -1,10 +1,11 @@
 import logging
-from typing import Any, Dict, List, Optional
-
 import mcp.types as types
-
+from typing import List
+from typing import Optional
 from .sql import SafeSqlDriver
-from .utils.reponse import format_error_response, format_text_response
+from .utils.reponse import format_error_response
+from .utils.reponse import format_text_response
+from .utils.sql_driver import get_sql_driver
 from .utils.sql_driver import get_sql_driver_for_database
 
 logger = logging.getLogger(__name__)
@@ -33,70 +34,120 @@ def dynamically_register_resources(mcp_instance, database_name: Optional[str] = 
 def _register_static_resources(mcp_instance, db_name: str):  # type: ignore
     """Register static resource paths for a specific database."""
 
-    tables_uri = f"postgres://database/{db_name}/tables"
-    views_uri = f"postgres://database/{db_name}/views"
+    tables = f"postgres://{db_name}/"
+    views = f"postgres://{db_name}/"
+
+    tables_uri = tables + "{schema_name}/tables"
+    views_uri = views + "{schema_name}/views"
+
+    logger.info(f"Registering static resource: {tables_uri}")
+    logger.info(f"Registering static resource: {views_uri}")
 
     @mcp_instance.resource(tables_uri)  # type: ignore
-    async def get_database_tables_static() -> ResponseType:
+    async def get_database_tables_static(schema_name: str) -> ResponseType:
         """
         Get comprehensive information about all tables in the configured database.
 
         Returns complete table information including schemas, columns with comments,
         constraints, indexes, and statistics.
         """
-        return await _get_tables_impl(db_name)
+        return await _get_tables_impl(db_name, schema_name)
 
     @mcp_instance.resource(views_uri)  # type: ignore
-    async def get_database_views_static() -> ResponseType:
+    async def get_database_views_static(schema_name: str) -> ResponseType:
         """
         Get comprehensive information about all views in the configured database.
 
         Returns complete view information including schemas, columns with comments,
         view definitions, and dependencies.
         """
-        return await _get_views_impl(db_name)
-
-    logger.info(f"Registered static resources: {tables_uri}, {views_uri}")
+        return await _get_views_impl(db_name, schema_name)
 
 
 def _register_dynamic_resources(mcp_instance):  # type: ignore
     """Register dynamic resource paths with database name parameter."""
 
-    @mcp_instance.resource("postgres://database/{database_name}/tables")  # type: ignore
-    async def get_database_tables_dynamic(database_name: str) -> ResponseType:
+    tables_uri = "postgres://{database_name}/{schema_name}/tables"
+    views_uri = "postgres://{database_name}/{schema_name}/views"
+    databases_uri = "postgres://databases"
+    schemas_uri = "postgres://{database_name}/schemas"
+
+    logger.info(f"Registering dynamic resource: {tables_uri}")
+    logger.info(f"Registering dynamic resource: {views_uri}")
+    logger.info(f"Registering dynamic resource: {databases_uri}")
+    logger.info(f"Registering dynamic resource: {schemas_uri}")
+
+    @mcp_instance.resource(tables_uri)  # type: ignore
+    async def get_database_tables_dynamic(database_name: str, schema_name: Optional[str] = None) -> ResponseType:
         """
         Get comprehensive information about all tables in a specific database.
 
         Args:
             database_name: Name of the database to query
+            schema_name: Name of the schema to query
 
         Returns complete table information including schemas, columns with comments,
         constraints, indexes, and statistics.
         """
-        return await _get_tables_impl(database_name)
+        return await _get_tables_impl(database_name, schema_name)
 
-    @mcp_instance.resource("postgres://database/{database_name}/views")  # type: ignore
-    async def get_database_views_dynamic(database_name: str) -> ResponseType:
+    @mcp_instance.resource(views_uri)  # type: ignore
+    async def get_database_views_dynamic(database_name: str, schema_name: Optional[str] = None) -> ResponseType:
         """
         Get comprehensive information about all views in a specific database.
 
         Args:
             database_name: Name of the database to query
+            schema_name: Name of the schema to query
 
         Returns complete view information including schemas, columns with comments,
         view definitions, and dependencies.
         """
-        return await _get_views_impl(database_name)
+        return await _get_views_impl(database_name, schema_name)
 
-    logger.info("Registered dynamic resources: postgres://database/{database_name}/tables, postgres://database/{database_name}/views")
+    @mcp_instance.resource(databases_uri)  # type: ignore
+    async def get_all_databases_dynamic() -> ResponseType:
+        """
+        List all databases in the PostgreSQL server.
+
+        Returns a list of all user databases excluding system templates.
+        Each database entry includes:
+          - database_name: Name of the database
+          - owner: Database owner
+          - encoding: Character encoding
+          - collation: Collation setting
+          - ctype: Character classification
+          - size: Formatted database size
+        """
+        return await _get_databases_info_impl(None)
+
+    @mcp_instance.resource(schemas_uri)  # type: ignore
+    async def get_all_schemas_dynamic(database_name: str) -> ResponseType:
+        """
+        List all schemas in a specific PostgreSQL database.
+
+        Args:
+            database_name: Name of the database to query
+
+        Returns a list of all user schemas excluding system schemas (pg_* and information_schema).
+        Each schema entry includes:
+          - schema_name: Name of the schema
+          - schema_owner: Owner of the schema
+          - schema_type: Type of schema ('user' or 'system')
+        """
+        return await _get_all_schemas_impl(database_name)
 
 
-async def _get_tables_impl(database_name: str) -> ResponseType:
+async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None) -> ResponseType:
     """
     Implementation for getting comprehensive table information.
 
+    Args:
+        database_name: Database name to query
+        schema_name: Optional schema name to filter results. If provided, only returns tables from that schema.
+
     Returns:
-        - List of all user schemas
+        - List of all user schemas (or single schema if filtered)
         - Complete table information including:
           * Table metadata (schema, name, type)
           * Column details with comments
@@ -104,13 +155,13 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
           * Indexes with statistics
           * Table size and row count
     """
+    logger.info(f"Getting comprehensive table information for database: {database_name}, schema: {schema_name or 'all'}")
+    if not schema_name:
+        raise ValueError("schema_name must be provided")
     try:
-        logger.info(f"Getting comprehensive table information for database: {database_name}")
         sql_driver = await get_sql_driver_for_database(database_name)
-
-        # Get all user schemas
-        schema_rows = await sql_driver.execute_query(
-            """
+        schema_filter = f"AND schema_name = '{schema_name}'"
+        schema_query = f"""
             SELECT 
                 schema_name,
                 schema_owner,
@@ -122,14 +173,22 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
             FROM information_schema.schemata
             WHERE schema_name NOT LIKE 'pg_%'
               AND schema_name != 'information_schema'
+              {schema_filter}
             ORDER BY schema_name
-            """
-        )
+        """
+        schema_rows = await sql_driver.execute_query(schema_query)
         schemas = [row.cells for row in schema_rows] if schema_rows else []
 
-        # Get all tables with metadata
-        table_rows = await sql_driver.execute_query(
-            """
+        # If schema_name is provided but not found, return empty result
+        if schema_name and not schemas:
+            logger.warning(f"Schema '{schema_name}' not found in database '{database_name}'")
+            return format_text_response(
+                {"database": database_name, "schemas": [], "tables": [], "total_tables": 0, "message": f"Schema '{schema_name}' not found"}
+            )
+        table_schema_filter = f"AND t.table_schema = '{schema_name}'"
+
+        # Get all tables with metadata (filtered by schema if provided)
+        table_query = f"""
             SELECT 
                 t.table_schema, 
                 t.table_name,
@@ -143,16 +202,17 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
             WHERE t.table_type = 'BASE TABLE'
               AND t.table_schema NOT LIKE 'pg_%'
               AND t.table_schema != 'information_schema'
+              {table_schema_filter}
             ORDER BY t.table_schema, t.table_name
-            """
-        )
+        """
+        table_rows = await sql_driver.execute_query(table_query)
 
         if not table_rows:
-            return format_text_response({"database": database_name, "schemas": schemas, "tables": []})
+            return format_text_response({"database": database_name, "schemas": schemas, "tables": [], "total_tables": 0})
 
         tables_info = []
         for row in table_rows:
-            schema_name = row.cells["table_schema"]
+            table_schema = row.cells["table_schema"]
             table_name = row.cells["table_name"]
 
             try:
@@ -178,7 +238,7 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
                     WHERE c.table_schema = {} AND c.table_name = {}
                     ORDER BY c.ordinal_position
                     """,
-                    [schema_name, table_name],
+                    [table_schema, table_name],
                 )
 
                 columns = []
@@ -231,7 +291,7 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
                     WHERE tc.table_schema = {} AND tc.table_name = {}
                     ORDER BY tc.constraint_type, tc.constraint_name, kcu.ordinal_position
                     """,
-                    [schema_name, table_name],
+                    [table_schema, table_name],
                 )
 
                 constraints = {}
@@ -271,7 +331,7 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
                     WHERE i.schemaname = {} AND i.tablename = {}
                     ORDER BY i.indexname
                     """,
-                    [schema_name, table_name],
+                    [table_schema, table_name],
                 )
 
                 indexes = []
@@ -288,7 +348,7 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
                         )
 
                 table_info = {
-                    "schema": schema_name,
+                    "schema": table_schema,
                     "name": table_name,
                     "type": "table",
                     "comment": row.cells.get("table_comment", ""),
@@ -302,10 +362,16 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
                 tables_info.append(table_info)
 
             except Exception as e:
-                logger.error(f"Error getting schema for table {database_name}.{schema_name}.{table_name}: {e}")
+                logger.error(f"Error getting schema for table {database_name}.{table_schema}.{table_name}: {e}")
                 # Continue with other tables even if one fails
 
-        result = {"database": database_name, "schemas": schemas, "tables": tables_info, "total_tables": len(tables_info)}
+        result = {
+            "database": database_name,
+            "schema_filter": schema_name or "all",
+            "schemas": schemas,
+            "tables": tables_info,
+            "total_tables": len(tables_info),
+        }
 
         return format_text_response(result)
     except Exception as e:
@@ -313,26 +379,31 @@ async def _get_tables_impl(database_name: str) -> ResponseType:
         return format_error_response(str(e))
 
 
-async def _get_views_impl(database_name: str) -> ResponseType:
+async def _get_views_impl(database_name: str, schema_name: Optional[str] = None) -> ResponseType:
     """
     Implementation for getting comprehensive view information.
 
+    Args:
+        database_name: Database name to query
+        schema_name: Optional schema name to filter results. If provided, only returns views from that schema.
+
     Returns:
-        - List of all user schemas
+        - List of all user schemas (or single schema if filtered)
         - Complete view information including:
           * View metadata (schema, name, type)
           * Column details with comments
           * View definition (SQL)
           * Dependent objects
-
     """
+    logger.info(f"Getting comprehensive view information for database: {database_name}, schema: {schema_name or 'all'}")
+    if not schema_name:
+        raise ValueError("schema_name must be provided")
     try:
-        logger.info(f"Getting comprehensive view information for database: {database_name}")
         sql_driver = await get_sql_driver_for_database(database_name)
+        schema_filter = f"AND schema_name = '{schema_name}'"
 
-        # Get all user schemas
-        schema_rows = await sql_driver.execute_query(
-            """
+        # Get all user schemas (or specific schema if provided)
+        schema_query = f"""
             SELECT 
                 schema_name,
                 schema_owner,
@@ -344,14 +415,26 @@ async def _get_views_impl(database_name: str) -> ResponseType:
             FROM information_schema.schemata
             WHERE schema_name NOT LIKE 'pg_%'
               AND schema_name != 'information_schema'
+              {schema_filter}
             ORDER BY schema_name
-            """
-        )
+        """
+        schema_rows = await sql_driver.execute_query(schema_query)
         schemas = [row.cells for row in schema_rows] if schema_rows else []
 
-        # Get all views with metadata
-        view_rows = await sql_driver.execute_query(
-            """
+        # If schema_name is provided but not found, return empty result
+        if schema_name and not schemas:
+            logger.warning(f"Schema '{schema_name}' not found in database '{database_name}'")
+            return format_text_response(
+                {"database": database_name, "schemas": [], "views": [], "total_views": 0, "message": f"Schema '{schema_name}' not found"}
+            )
+
+        # Build view filter condition
+        view_schema_filter = ""
+        if schema_name:
+            view_schema_filter = f"AND t.table_schema = '{schema_name}'"
+
+        # Get all views with metadata (filtered by schema if provided)
+        view_query = f"""
             SELECT 
                 t.table_schema, 
                 t.table_name,
@@ -363,16 +446,17 @@ async def _get_views_impl(database_name: str) -> ResponseType:
             WHERE t.table_type = 'VIEW'
               AND t.table_schema NOT LIKE 'pg_%'
               AND t.table_schema != 'information_schema'
+              {view_schema_filter}
             ORDER BY t.table_schema, t.table_name
-            """
-        )
+        """
+        view_rows = await sql_driver.execute_query(view_query)
 
         if not view_rows:
-            return format_text_response({"database": database_name, "schemas": schemas, "views": []})
+            return format_text_response({"database": database_name, "schemas": schemas, "views": [], "total_views": 0})
 
         views_info = []
         for row in view_rows:
-            schema_name = row.cells["table_schema"]
+            view_schema = row.cells["table_schema"]
             view_name = row.cells["table_name"]
 
             try:
@@ -398,7 +482,7 @@ async def _get_views_impl(database_name: str) -> ResponseType:
                     WHERE c.table_schema = {} AND c.table_name = {}
                     ORDER BY c.ordinal_position
                     """,
-                    [schema_name, view_name],
+                    [view_schema, view_name],
                 )
 
                 columns = []
@@ -440,7 +524,7 @@ async def _get_views_impl(database_name: str) -> ResponseType:
                       AND source_table.relkind IN ('r', 'v', 'm')
                       AND d.deptype = 'n'
                     """,
-                    [schema_name, view_name],
+                    [view_schema, view_name],
                 )
 
                 dependencies = []
@@ -456,7 +540,7 @@ async def _get_views_impl(database_name: str) -> ResponseType:
                         )
 
                 view_info = {
-                    "schema": schema_name,
+                    "schema": view_schema,
                     "name": view_name,
                     "type": "view",
                     "comment": row.cells.get("view_comment", ""),
@@ -468,10 +552,16 @@ async def _get_views_impl(database_name: str) -> ResponseType:
                 views_info.append(view_info)
 
             except Exception as e:
-                logger.error(f"Error getting schema for view {database_name}.{schema_name}.{view_name}: {e}")
+                logger.error(f"Error getting schema for view {database_name}.{view_schema}.{view_name}: {e}")
                 # Continue with other views even if one fails
 
-        result = {"database": database_name, "schemas": schemas, "views": views_info, "total_views": len(views_info)}
+        result = {
+            "database": database_name,
+            "schema_filter": schema_name or "all",
+            "schemas": schemas,
+            "views": views_info,
+            "total_views": len(views_info),
+        }
 
         return format_text_response(result)
     except Exception as e:
@@ -479,7 +569,108 @@ async def _get_views_impl(database_name: str) -> ResponseType:
         return format_error_response(str(e))
 
 
-"""
-uv run postgres-mcp "postgres://postgres:80q0!!?@localhost:5432/test?keepalives=1" --transport=sse
+async def _get_all_schemas_impl(database_name: str) -> ResponseType:
+    """
+    Implementation for getting all schemas in a database.
 
-"""
+    Args:
+        database_name: Database name to query
+
+    Returns:
+        List of all schemas in the database, excluding system schemas
+    """
+    logger.info(f"Getting all schemas for database: {database_name}")
+    try:
+        sql_driver = await get_sql_driver_for_database(database_name)
+
+        rows = await sql_driver.execute_query(
+            """
+            SELECT 
+                schema_name,
+                schema_owner,
+                CASE
+                    WHEN schema_name LIKE 'pg_%' THEN 'system'
+                    WHEN schema_name = 'information_schema' THEN 'system'
+                    ELSE 'user'
+                END as schema_type
+            FROM information_schema.schemata
+            WHERE schema_name NOT LIKE 'pg_%'
+              AND schema_name != 'information_schema'
+            ORDER BY schema_name
+            """
+        )
+        schemas = [row.cells for row in rows] if rows else []
+        return format_text_response({"database": database_name, "schemas": schemas, "total_schemas": len(schemas)})
+    except Exception as e:
+        logger.error(f"Error getting schemas for database {database_name}: {e}")
+        return format_error_response(str(e))
+
+
+async def _get_databases_info_impl(database_name: Optional[str] = None) -> ResponseType:
+    """
+    Implementation for getting database information.
+
+    Args:
+        database_name: Optional database name. If None, returns all databases.
+                      If provided, returns information for that specific database.
+
+    Returns:
+        - If database_name is None: List of all databases
+        - If database_name is provided: Detailed information about the specific database
+    """
+    try:
+        if database_name:
+            logger.info(f"Getting information for database: {database_name}")
+            sql_driver = await get_sql_driver()
+
+            rows = await SafeSqlDriver.execute_param_query(
+                sql_driver,
+                """
+                SELECT 
+                    datname as database_name,
+                    pg_catalog.pg_get_userbyid(datdba) as owner,
+                    pg_encoding_to_char(encoding) as encoding,
+                    datcollate as collation,
+                    datctype as ctype,
+                    pg_size_pretty(pg_database_size(datname)) as size,
+                    datconnlimit as connection_limit,
+                    datistemplate as is_template,
+                    datallowconn as allow_connections
+                FROM pg_catalog.pg_database
+                WHERE datname = {}
+                """,
+                [database_name],
+            )
+
+            if not rows or len(rows) == 0:
+                return format_error_response(f"Database '{database_name}' not found")
+
+            database_info = rows[0].cells
+            return format_text_response(database_info)
+        else:
+            logger.info("Listing all databases")
+            sql_driver = await get_sql_driver()
+
+            rows = await sql_driver.execute_query(
+                """
+                SELECT 
+                    datname as database_name,
+                    pg_catalog.pg_get_userbyid(datdba) as owner,
+                    pg_encoding_to_char(encoding) as encoding,
+                    datcollate as collation,
+                    datctype as ctype,
+                    pg_size_pretty(pg_database_size(datname)) as size
+                FROM pg_catalog.pg_database
+                WHERE datistemplate = false
+                ORDER BY datname
+                """
+            )
+
+            databases = [row.cells for row in rows] if rows else []
+            return format_text_response(databases)
+    except Exception as e:
+        if database_name:
+            logger.error(f"Error getting database info for {database_name}: {e}")
+        else:
+            logger.error(f"Error listing databases: {e}")
+        return format_error_response(str(e))
