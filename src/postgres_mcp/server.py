@@ -31,6 +31,7 @@ from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password
 from .top_queries import TopQueriesCalc
 from .utils import sql_driver as sql_driver_module  # Import the module to access global state
+from .utils.url import fix_connection_url
 
 # Initialize FastMCP with default settings
 mcp = FastMCP("postgres-mcp")
@@ -46,10 +47,9 @@ logger = logging.getLogger(__name__)
 
 @mcp.tool(description="Show detailed information about a database object")
 async def get_object_details(
-        schema_name: str = Field(description="Schema name"),
-        object_name: str = Field(description="Object name"),
-        object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'",
-                                 default="table"),
+    schema_name: str = Field(description="Schema name"),
+    object_name: str = Field(description="Object name"),
+    object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'", default="table"),
 ) -> ResponseType:
     """Get detailed information about a database object."""
     try:
@@ -120,8 +120,7 @@ async def get_object_details(
                 [schema_name, object_name],
             )
 
-            indexes = [{"name": r.cells["indexname"], "definition": r.cells["indexdef"]} for r in
-                       idx_rows] if idx_rows else []
+            indexes = [{"name": r.cells["indexname"], "definition": r.cells["indexdef"]} for r in idx_rows] if idx_rows else []
 
             result = {
                 "basic": {"schema": schema_name, "name": object_name, "type": object_type},
@@ -166,8 +165,7 @@ async def get_object_details(
 
             if rows and rows[0]:
                 row = rows[0]
-                result = {"name": row.cells["extname"], "version": row.cells["extversion"],
-                          "relocatable": row.cells["extrelocatable"]}
+                result = {"name": row.cells["extname"], "version": row.cells["extversion"], "relocatable": row.cells["extrelocatable"]}
             else:
                 result = {}
 
@@ -180,17 +178,16 @@ async def get_object_details(
         return format_error_response(str(e))
 
 
-@mcp.tool(
-    description="Explains the execution plan for a SQL query, showing how the database will execute it and provides detailed cost estimates.")
+@mcp.tool(description="Explains the execution plan for a SQL query, showing how the database will execute it and provides detailed cost estimates.")
 async def explain_query(
-        sql: str = Field(description="SQL query to explain"),
-        analyze: bool = Field(
-            description="When True, actually runs the query to show real execution statistics instead of estimates. "
-                        "Takes longer but provides more accurate information.",
-            default=False,
-        ),
-        hypothetical_indexes: list[dict[str, Any]] = Field(
-            description="""A list of hypothetical indexes to simulate. Each index must be a dictionary with these keys:
+    sql: str = Field(description="SQL query to explain"),
+    analyze: bool = Field(
+        description="When True, actually runs the query to show real execution statistics instead of estimates. "
+        "Takes longer but provides more accurate information.",
+        default=False,
+    ),
+    hypothetical_indexes: list[dict[str, Any]] = Field(
+        description="""A list of hypothetical indexes to simulate. Each index must be a dictionary with these keys:
     - 'table': The table name to add the index to (e.g., 'users')
     - 'columns': List of column names to include in the index (e.g., ['email'] or ['last_name', 'first_name'])
     - 'using': Optional index method (default: 'btree', other options include 'hash', 'gist', etc.)
@@ -200,8 +197,8 @@ Examples: [
     {"table": "orders", "columns": ["user_id", "created_at"]}
 ]
 If there is no hypothetical index, you can pass an empty list.""",
-            default=[],
-        ),
+        default=[],
+    ),
 ) -> ResponseType:
     """
     Explains the execution plan for a SQL query.
@@ -262,7 +259,7 @@ If there is no hypothetical index, you can pass an empty list.""",
 
 # Query function declaration without the decorator - we'll add it dynamically based on access mode
 async def execute_sql(
-        sql: str = Field(description="SQL to run", default="all"),
+    sql: str = Field(description="SQL to run", default="all"),
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
@@ -279,8 +276,8 @@ async def execute_sql(
 @mcp.tool(description="Analyze frequently executed queries in the database and recommend optimal indexes")
 @validate_call
 async def analyze_workload_indexes(
-        max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
-        method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
+    max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
+    method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
 ) -> ResponseType:
     """Analyze frequently executed queries in the database and recommend optimal indexes."""
     try:
@@ -300,16 +297,15 @@ async def analyze_workload_indexes(
 @mcp.tool(description="Analyze a list of (up to 10) SQL queries and recommend optimal indexes")
 @validate_call
 async def analyze_query_indexes(
-        queries: list[str] = Field(description="List of Query strings to analyze"),
-        max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
-        method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
+    queries: list[str] = Field(description="List of Query strings to analyze"),
+    max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
+    method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
 ) -> ResponseType:
     """Analyze a list of SQL queries and recommend optimal indexes."""
     if len(queries) == 0:
         return format_error_response("Please provide a non-empty list of queries to analyze.")
     if len(queries) > MAX_NUM_INDEX_TUNING_QUERIES:
-        return format_error_response(
-            f"Please provide a list of up to {MAX_NUM_INDEX_TUNING_QUERIES} queries to analyze.")
+        return format_error_response(f"Please provide a list of up to {MAX_NUM_INDEX_TUNING_QUERIES} queries to analyze.")
 
     try:
         sql_driver = await sql_driver_module.get_sql_driver()
@@ -327,21 +323,21 @@ async def analyze_query_indexes(
 
 @mcp.tool(
     description="Analyzes database health. Here are the available health checks:\n"
-                "- index - checks for invalid, duplicate, and bloated indexes\n"
-                "- connection - checks the number of connection and their utilization\n"
-                "- vacuum - checks vacuum health for transaction id wraparound\n"
-                "- sequence - checks sequences at risk of exceeding their maximum value\n"
-                "- replication - checks replication health including lag and slots\n"
-                "- buffer - checks for buffer cache hit rates for indexes and tables\n"
-                "- constraint - checks for invalid constraints\n"
-                "- all - runs all checks\n"
-                "You can optionally specify a single health check or a comma-separated list of health checks. The default is 'all' checks."
+    "- index - checks for invalid, duplicate, and bloated indexes\n"
+    "- connection - checks the number of connection and their utilization\n"
+    "- vacuum - checks vacuum health for transaction id wraparound\n"
+    "- sequence - checks sequences at risk of exceeding their maximum value\n"
+    "- replication - checks replication health including lag and slots\n"
+    "- buffer - checks for buffer cache hit rates for indexes and tables\n"
+    "- constraint - checks for invalid constraints\n"
+    "- all - runs all checks\n"
+    "You can optionally specify a single health check or a comma-separated list of health checks. The default is 'all' checks."
 )
 async def analyze_db_health(
-        health_type: str = Field(
-            description=f"Optional. Valid values are: {', '.join(sorted([t.value for t in HealthType]))}.",
-            default="all",
-        ),
+    health_type: str = Field(
+        description=f"Optional. Valid values are: {', '.join(sorted([t.value for t in HealthType]))}.",
+        default="all",
+    ),
 ) -> ResponseType:
     """Analyze database health for specified components.
 
@@ -359,13 +355,12 @@ async def analyze_db_health(
     description=f"Reports the slowest or most resource-intensive queries using data from the '{PG_STAT_STATEMENTS}' extension.",
 )
 async def get_top_queries(
-        sort_by: str = Field(
-            description="Ranking criteria: 'total_time' for total execution time or 'mean_time' for mean execution time per call, or 'resources' "
-                        "for resource-intensive queries",
-            default="resources",
-        ),
-        limit: int = Field(description="Number of queries to return when ranking based on mean_time or total_time",
-                           default=10),
+    sort_by: str = Field(
+        description="Ranking criteria: 'total_time' for total execution time or 'mean_time' for mean execution time per call, or 'resources' "
+        "for resource-intensive queries",
+        default="resources",
+    ),
+    limit: int = Field(description="Number of queries to return when ranking based on mean_time or total_time", default=10),
 ) -> ResponseType:
     try:
         sql_driver = await sql_driver_module.get_sql_driver()
@@ -376,11 +371,9 @@ async def get_top_queries(
             return format_text_response(result)
         elif sort_by == "mean_time" or sort_by == "total_time":
             # Map the sort_by values to what get_top_queries_by_time expects
-            result = await top_queries_tool.get_top_queries_by_time(limit=limit,
-                                                                    sort_by="mean" if sort_by == "mean_time" else "total")
+            result = await top_queries_tool.get_top_queries_by_time(limit=limit, sort_by="mean" if sort_by == "mean_time" else "total")
         else:
-            return format_error_response(
-                "Invalid sort criteria. Please use 'resources' or 'mean_time' or 'total_time'.")
+            return format_error_response("Invalid sort criteria. Please use 'resources' or 'mean_time' or 'total_time'.")
         return format_text_response(result)
     except Exception as e:
         logger.error(f"Error getting slow queries: {e}")
@@ -438,13 +431,15 @@ async def main():
         raise ValueError(
             "Error: No database URL provided. Please specify via 'DATABASE_URI' environment variable or command-line argument.",
         )
+    database_url = fix_connection_url(database_url)
+
     parsed_url = urlparse(database_url)
-    database_name = parsed_url.path.lstrip('/')
+    database_name = parsed_url.path.lstrip("/")
     logger.info(f"Database name: {database_name}")
 
     # Register all MCP resource handlers
     dynamically_register_resources(mcp, database_name)
-    
+
     # Initialize database connection pool
     try:
         await sql_driver_module.db_connection.pool_connect(database_url)
