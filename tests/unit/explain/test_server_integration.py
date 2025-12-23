@@ -37,7 +37,7 @@ class MockExplainPlanArtifact(ExplainPlanArtifact):
     def __init__(self, plan_data):
         self.plan_data = plan_data
         # Don't call super().__init__() to avoid validation
-    
+
     def to_text(self):
         return json.dumps(self.plan_data)
 
