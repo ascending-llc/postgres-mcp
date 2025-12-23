@@ -5,9 +5,11 @@ import logging
 import os
 import signal
 import sys
+from enum import Enum
 from typing import Any, Dict, Optional
 from typing import List
 from typing import Literal
+from typing import Union
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
