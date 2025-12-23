@@ -178,7 +178,7 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
               {schema_filter}
             ORDER BY schema_name
         """
-        schema_rows = await sql_driver.execute_query(schema_query)
+        schema_rows = await sql_driver.execute_query(schema_query)  # type: ignore
         schemas = [row.cells for row in schema_rows] if schema_rows else []
 
         # If schema_name is provided but not found, return empty result
@@ -207,7 +207,7 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
               {table_schema_filter}
             ORDER BY t.table_schema, t.table_name
         """
-        table_rows = await sql_driver.execute_query(table_query)
+        table_rows = await sql_driver.execute_query(table_query)  # type: ignore
 
         if not table_rows:
             return format_text_response({"database": database_name, "schemas": schemas, "tables": [], "total_tables": 0})
@@ -420,7 +420,7 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
               {schema_filter}
             ORDER BY schema_name
         """
-        schema_rows = await sql_driver.execute_query(schema_query)
+        schema_rows = await sql_driver.execute_query(schema_query)  # type: ignore
         schemas = [row.cells for row in schema_rows] if schema_rows else []
 
         # If schema_name is provided but not found, return empty result
@@ -451,7 +451,7 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
               {view_schema_filter}
             ORDER BY t.table_schema, t.table_name
         """
-        view_rows = await sql_driver.execute_query(view_query)
+        view_rows = await sql_driver.execute_query(view_query)  # type: ignore
 
         if not view_rows:
             return format_text_response({"database": database_name, "schemas": schemas, "views": [], "total_views": 0})
