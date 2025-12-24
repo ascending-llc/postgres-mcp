@@ -32,6 +32,19 @@ def dynamically_register_resources(mcp_instance, database_name: Optional[str] = 
         logger.info("Registering dynamic resources with database name parameter")
         _register_dynamic_resources(mcp_instance)
 
+    data_lake_all_tables_uri = "postgres://prodG2/data_lake/tables"
+    logger.info(f"Registering special resource: {data_lake_all_tables_uri}")
+
+    @mcp_instance.resource(data_lake_all_tables_uri)  # type: ignore
+    async def get_data_lake_all_tables() -> ResponseType:
+        """
+        Get comprehensive information about all tables in the data_lake database.
+
+        Returns information for all tables across all schemas.
+        """
+        logger.info("Getting all tables information for data_lake database (all schemas)")
+        return await _get_tables_impl("data_lake", schema_name=None)
+
 
 def _register_static_resources(mcp_instance, db_name: str):  # type: ignore
     """Register static resource paths for a specific database."""
@@ -157,12 +170,12 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
           * Indexes with statistics
           * Table size and row count
     """
-    logger.info(f"Getting comprehensive table information for database: {database_name}, schema: {schema_name or 'all'}")
-    if not schema_name:
-        raise ValueError("schema_name must be provided")
+    logger.info(
+        f"Getting comprehensive table information for database: {database_name}, schema: {schema_name or 'all'}")
     try:
         sql_driver = await get_sql_driver_for_database(database_name)
-        schema_filter = f"AND schema_name = '{schema_name}'"
+        # Filter by schema_name if provided; otherwise query all user schemas
+        schema_filter = f"AND schema_name = '{schema_name}'" if schema_name else ""
         schema_query = f"""
             SELECT
                 schema_name,
@@ -185,9 +198,11 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
         if schema_name and not schemas:
             logger.warning(f"Schema '{schema_name}' not found in database '{database_name}'")
             return format_text_response(
-                {"database": database_name, "schemas": [], "tables": [], "total_tables": 0, "message": f"Schema '{schema_name}' not found"}
+                {"database": database_name, "schemas": [], "tables": [], "total_tables": 0,
+                 "message": f"Schema '{schema_name}' not found"}
             )
-        table_schema_filter = f"AND t.table_schema = '{schema_name}'"
+        # Filter tables by schema_name if provided; otherwise query all tables in user schemas
+        table_schema_filter = f"AND t.table_schema = '{schema_name}'" if schema_name else ""
 
         # Get all tables with metadata (filtered by schema if provided)
         table_query = f"""
@@ -210,7 +225,8 @@ async def _get_tables_impl(database_name: str, schema_name: Optional[str] = None
         table_rows = await sql_driver.execute_query(table_query)  # type: ignore
 
         if not table_rows:
-            return format_text_response({"database": database_name, "schemas": schemas, "tables": [], "total_tables": 0})
+            return format_text_response(
+                {"database": database_name, "schemas": schemas, "tables": [], "total_tables": 0})
 
         tables_info = []
         for row in table_rows:
@@ -427,7 +443,8 @@ async def _get_views_impl(database_name: str, schema_name: Optional[str] = None)
         if schema_name and not schemas:
             logger.warning(f"Schema '{schema_name}' not found in database '{database_name}'")
             return format_text_response(
-                {"database": database_name, "schemas": [], "views": [], "total_views": 0, "message": f"Schema '{schema_name}' not found"}
+                {"database": database_name, "schemas": [], "views": [], "total_views": 0,
+                 "message": f"Schema '{schema_name}' not found"}
             )
 
         # Build view filter condition
