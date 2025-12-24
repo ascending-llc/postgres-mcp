@@ -43,7 +43,7 @@ def dynamically_register_resources(mcp_instance, database_name: Optional[str] = 
         Returns information for all tables across all schemas.
         """
         logger.info("Getting all tables information for data_lake database (all schemas)")
-        return await _get_tables_impl("data_lake", schema_name=None)
+        return await _get_tables_impl("prodG2", schema_name="data_lake")
 
 
 def _register_static_resources(mcp_instance, db_name: str):  # type: ignore
