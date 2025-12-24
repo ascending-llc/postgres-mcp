@@ -43,7 +43,7 @@ def dynamically_register_resources(mcp_instance, database_name: Optional[str] = 
         Returns information for all tables across all schemas.
         """
         logger.info("Getting all tables information for data_lake database (all schemas)")
-        return await _get_tables_impl("prodG2", schema_name="data_lake")
+        return await _get_tables_simple_impl("prodG2", schema_name="data_lake")
 
 
 def _register_static_resources(mcp_instance, db_name: str):  # type: ignore
@@ -692,4 +692,99 @@ async def _get_databases_info_impl(database_name: Optional[str] = None) -> Respo
             logger.error(f"Error getting database info for {database_name}: {e}")
         else:
             logger.error(f"Error listing databases: {e}")
+        return format_error_response(str(e))
+
+
+async def _get_tables_simple_impl(database_name: str, schema_name: Optional[str] = None) -> ResponseType:
+    """
+    Implementation for getting basic table information.
+
+    Args:
+        database_name: Database name to query
+        schema_name: Optional schema name to filter results. If provided, only returns tables from that schema.
+
+    Returns:
+        - List of tables with name, category (schema), and description
+    """
+    logger.info(
+        f"Getting table information for database: {database_name}, schema: {schema_name or 'all'}")
+    try:
+        sql_driver = await get_sql_driver_for_database(database_name)
+
+        # Filter by schema_name if provided
+        schema_filter = f"AND schema_name = '{schema_name}'" if schema_name else ""
+
+        # Get user schemas
+        schema_query = f"""
+            SELECT
+                schema_name,
+                schema_owner
+            FROM information_schema.schemata
+            WHERE schema_name NOT LIKE 'pg_%'
+              AND schema_name != 'information_schema'
+              {schema_filter}
+            ORDER BY schema_name
+        """
+        schema_rows = await sql_driver.execute_query(schema_query)  # type: ignore
+        schemas = [row.cells for row in schema_rows] if schema_rows else []
+
+        # If schema_name is provided but not found, return empty result
+        if schema_name and not schemas:
+            logger.warning(f"Schema '{schema_name}' not found in database '{database_name}'")
+            return format_text_response(
+                {
+                    "database": database_name,
+                    "tables": [],
+                    "total_tables": 0,
+                    "message": f"Schema '{schema_name}' not found"
+                }
+            )
+
+        # Filter tables by schema_name if provided
+        table_schema_filter = f"AND t.table_schema = '{schema_name}'" if schema_name else ""
+
+        # Get simplified table information
+        table_query = f"""
+            SELECT
+                t.table_schema as category,
+                t.table_name as name,
+                obj_description((quote_ident(t.table_schema) || '.' || quote_ident(t.table_name))::regclass) as description
+            FROM information_schema.tables t
+            WHERE t.table_type = 'BASE TABLE'
+              AND t.table_schema NOT LIKE 'pg_%'
+              AND t.table_schema != 'information_schema'
+              {table_schema_filter}
+            ORDER BY t.table_schema, t.table_name
+        """
+        table_rows = await sql_driver.execute_query(table_query)  # type: ignore
+
+        if not table_rows:
+            return format_text_response(
+                {
+                    "database": database_name,
+                    "tables": [],
+                    "total_tables": 0
+                }
+            )
+
+        # Format table information
+        tables_info = []
+        for row in table_rows:
+            table_info = {
+                "name": row.cells["name"],
+                "category": row.cells["category"],
+                "description": row.cells.get("description") or ""
+            }
+            tables_info.append(table_info)
+
+        result = {
+            "database": database_name,
+            "schema_filter": schema_name or "all",
+            "tables": tables_info,
+            "total_tables": len(tables_info)
+        }
+        return format_text_response(result)
+
+    except Exception as e:
+        logger.error(f"Error getting tables information for database {database_name}: {e}")
         return format_error_response(str(e))
