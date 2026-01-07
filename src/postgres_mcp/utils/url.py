@@ -1,4 +1,4 @@
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 
 def fix_connection_url(url: str) -> str:
@@ -10,7 +10,9 @@ def fix_connection_url(url: str) -> str:
             user_pass = url[scheme_end:at_pos]
             if ":" in user_pass:
                 username, password = user_pass.split(":", 1)
-                encoded_password = quote(password, safe="")
+                # If password is already encoded, decode it.
+                plain_password = unquote(password)
+                encoded_password = quote(plain_password, safe="")
                 return url[:scheme_end] + username + ":" + encoded_password + url[at_pos:]
     except Exception as e:
         print(e)
