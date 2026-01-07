@@ -1,4 +1,5 @@
 import pytest
+
 from postgres_mcp.utils.url import fix_connection_url
 
 
