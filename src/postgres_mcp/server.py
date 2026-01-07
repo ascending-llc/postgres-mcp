@@ -27,9 +27,9 @@ from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
 from .moldes.model import AccessMode
-from .resource import register_resource_templates
 from .resource import format_error_response
 from .resource import format_text_response
+from .resource import register_resource_templates
 from .sql import SafeSqlDriver
 from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password

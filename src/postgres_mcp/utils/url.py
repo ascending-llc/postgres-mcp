@@ -1,4 +1,5 @@
-from urllib.parse import quote, unquote
+from urllib.parse import quote
+from urllib.parse import unquote
 
 
 def fix_connection_url(url: str) -> str:
