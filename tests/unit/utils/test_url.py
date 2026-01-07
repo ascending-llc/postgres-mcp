@@ -1,5 +1,5 @@
 import pytest
-from postgres_mcp.utils.url import fix_connection_url  # Replace with actual import path
+from postgres_mcp.utils.url import fix_connection_url
 
 @pytest.mark.parametrize("input_url, expected_output", [
     ("postgresql://user:pass?word@localhost:5432/db", "postgresql://user:pass%3Fword@localhost:5432/db"),
