@@ -8,7 +8,7 @@ from postgres_mcp.utils.url import fix_connection_url
         ("postgresql://user:pass?word@localhost:5432/db", "postgresql://user:pass%3Fword@localhost:5432/db"),
         ("postgresql://user:pass%3Fword@localhost:5432/db", "postgresql://user:pass%3Fword@localhost:5432/db"),
         ("postgresql://user:pass%word@localhost:5432/db", "postgresql://user:pass%25word@localhost:5432/db"),
-        ("postgresql://user:?pass%25wo%rd@localhost:5432/db", "postgresql://user:%3Fpass%25wo%25rd@localhost:5432/db"),
+        ("postgresql://user:?pass%25wo%%rd@localhost:5432/db", "postgresql://user:%3Fpass%25wo%25%25rd@localhost:5432/db"),
     ],
 )
 def test_fix_connection_url_encoding(input_url: str, expected_output: str) -> None:
