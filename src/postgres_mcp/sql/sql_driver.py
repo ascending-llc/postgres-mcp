@@ -285,7 +285,8 @@ class SqlDriver:
                     transaction_started = True
 
                 paginated_query = query
-                if page_size > 0:
+                # Only apply pagination in readonly mode to avoid breaking DDL operations
+                if force_readonly and page_size > 0:
                     # Remove trailing semicolon if present (we'll add it back later)
                     query_trimmed = query.rstrip().rstrip(";")
                     had_semicolon = query.rstrip().endswith(";")
