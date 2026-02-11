@@ -8,6 +8,8 @@ from typing import ClassVar
 from typing import Optional
 
 import pglast
+
+from ..config import config
 from pglast.ast import A_ArrayExpr
 from pglast.ast import A_Const
 from pglast.ast import A_Expr
@@ -982,8 +984,14 @@ class SafeSqlDriver(SqlDriver):
         query: LiteralString,
         params: list[Any] | None = None,
         force_readonly: bool = True,  # do not use value passed in
+        page_size: int | None = None,
+        offset: int = 0,
     ) -> Optional[list[SqlDriver.RowResult]]:  # noqa: UP007
         """Execute a query after validating it is safe"""
+        # Use configured default if page_size not specified
+        if page_size is None:
+            page_size = config.default_page_size
+        
         self._validate(query)
 
         # NOTE: Always force readonly=True in SafeSqlDriver regardless of what was passed
@@ -994,6 +1002,8 @@ class SafeSqlDriver(SqlDriver):
                         f"/* crystaldba */ {query}",
                         params=params,
                         force_readonly=True,
+                        page_size=page_size,
+                        offset=offset,
                     )
             except asyncio.TimeoutError as e:
                 logger.warning(f"Query execution timed out after {self.timeout} seconds: {query[:100]}...")
@@ -1009,6 +1019,8 @@ class SafeSqlDriver(SqlDriver):
                 f"/* crystaldba */ {query}",
                 params=params,
                 force_readonly=True,
+                page_size=page_size,
+                offset=offset,
             )
 
     @staticmethod
