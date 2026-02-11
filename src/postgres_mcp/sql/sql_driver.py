@@ -1,7 +1,11 @@
 """SQL driver adapter for PostgreSQL connections."""
 
+from datetime import datetime, date
+import io
+import json
 import logging
 import re
+import sys
 from dataclasses import dataclass
 from typing import Any
 from typing import Dict
@@ -246,6 +250,20 @@ class SqlDriver:
                 self.conn = None
 
             raise e
+        
+    def get_wire_size(self, data: list[dict[str, Any]]) -> int:
+        def json_serial(obj: Any) -> str:
+            """JSON serializer for objects not handled by default json package"""
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            raise TypeError(f"Type {type(obj)} not serializable")
+
+        """Calculates exact bytes of the JSON-serialized data including datetimes."""
+        buffer = io.StringIO()
+        # Add 'default=json_serial' to handle the PostgreSQL timestamps
+        json.dump(data, buffer, default=json_serial)
+        return len(buffer.getvalue().encode("utf-8"))
+
 
     async def _execute_with_connection(self, connection, query, params, force_readonly, page_size: int | None = None, offset: int = 0) -> Optional[List[RowResult]]:
         """Execute query with the given connection and apply pagination."""
@@ -307,7 +325,19 @@ class SqlDriver:
                     await cursor.execute("ROLLBACK")
                     transaction_started = False
 
-                return [SqlDriver.RowResult(cells=dict(row)) for row in rows]
+                result = [SqlDriver.RowResult(cells=dict(row)) for row in rows]
+                
+                wire_size_bytes: int = self.get_wire_size([r.cells for r in result])
+
+                payload_size_mb = wire_size_bytes / (1024 * 1024)
+                
+                if payload_size_mb > config.max_payload_size_mb:
+                    raise ValueError(
+                        f"Query result payload too large: {payload_size_mb:.2f}MB exceeds maximum allowed size of {config.max_payload_size_mb}MB. "
+                        f"Please refine your query to return less data, use pagination (LIMIT/OFFSET), or filter results."
+                    )
+                
+                return result
 
         except Exception as e:
             # Try to roll back the transaction if it's still active

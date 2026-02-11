@@ -1,4 +1,8 @@
 # ruff: noqa: B008
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import argparse
 import asyncio
 import logging
@@ -37,9 +41,7 @@ from .sql import obfuscate_password
 from .top_queries import TopQueriesCalc
 from .utils import sql_driver as sql_driver_module  # Import the module to access global state
 from .utils.url import fix_connection_url
-from dotenv import load_dotenv
 
-load_dotenv()
 
 # Initialize FastMCP with default settings
 mcp = FastMCP("postgres-mcp")
