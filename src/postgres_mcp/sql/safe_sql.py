@@ -8,8 +8,6 @@ from typing import ClassVar
 from typing import Optional
 
 import pglast
-
-from ..config import config
 from pglast.ast import A_ArrayExpr
 from pglast.ast import A_Const
 from pglast.ast import A_Expr
@@ -82,6 +80,7 @@ from psycopg.sql import Composable
 from psycopg.sql import Literal
 from typing_extensions import LiteralString
 
+from ..config import config
 from .sql_driver import SqlDriver
 
 logger = logging.getLogger(__name__)

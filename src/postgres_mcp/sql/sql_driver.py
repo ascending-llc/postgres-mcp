@@ -1,12 +1,12 @@
 """SQL driver adapter for PostgreSQL connections."""
 
-from datetime import datetime, date
 import io
 import json
 import logging
 import re
-import sys
 from dataclasses import dataclass
+from datetime import date
+from datetime import datetime
 from typing import Any
 from typing import Dict
 from typing import List

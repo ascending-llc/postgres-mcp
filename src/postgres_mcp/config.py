@@ -19,7 +19,7 @@ class Config:
             if self._max_page_size < 1:
                 raise ValueError("POSTGRES_MCP_MAX_PAGE_SIZE must be at least 1")
         except ValueError as e:
-            raise ValueError(f"Invalid POSTGRES_MCP_MAX_PAGE_SIZE value '{max_page_size_str}': {e}")
+            raise ValueError(f"Invalid POSTGRES_MCP_MAX_PAGE_SIZE value '{max_page_size_str}': {e}") from e
 
         # Maximum payload size in MB (default: 5)
         max_payload_size_mb_str = os.getenv("POSTGRES_MCP_MAX_PAYLOAD_SIZE_MB", "5")
@@ -28,7 +28,7 @@ class Config:
             if self._max_payload_size_mb < 1:
                 raise ValueError("POSTGRES_MCP_MAX_PAYLOAD_SIZE_MB must be at least 1")
         except ValueError as e:
-            raise ValueError(f"Invalid POSTGRES_MCP_MAX_PAYLOAD_SIZE_MB value '{max_payload_size_mb_str}': {e}")
+            raise ValueError(f"Invalid POSTGRES_MCP_MAX_PAYLOAD_SIZE_MB value '{max_payload_size_mb_str}': {e}") from e
 
         # Default page size for queries (default: 100)
         default_page_size_str = os.getenv("POSTGRES_MCP_DEFAULT_PAGE_SIZE", "100")
@@ -41,7 +41,7 @@ class Config:
                     f"POSTGRES_MCP_DEFAULT_PAGE_SIZE ({self._default_page_size}) cannot exceed POSTGRES_MCP_MAX_PAGE_SIZE ({self._max_page_size})"
                 )
         except ValueError as e:
-            raise ValueError(f"Invalid POSTGRES_MCP_DEFAULT_PAGE_SIZE value '{default_page_size_str}': {e}")
+            raise ValueError(f"Invalid POSTGRES_MCP_DEFAULT_PAGE_SIZE value '{default_page_size_str}': {e}") from e
 
     @property
     def max_page_size(self) -> int:

@@ -1,8 +1,4 @@
 # ruff: noqa: B008
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import argparse
 import asyncio
 import logging
@@ -15,11 +11,16 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import mcp.types as types
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic import validate_call
 
+# Load environment variables before importing local modules that may use them
+load_dotenv()
+
+# ruff: noqa: E402
 from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
 from .artifacts import ErrorResult
@@ -41,7 +42,6 @@ from .sql import obfuscate_password
 from .top_queries import TopQueriesCalc
 from .utils import sql_driver as sql_driver_module  # Import the module to access global state
 from .utils.url import fix_connection_url
-
 
 # Initialize FastMCP with default settings
 mcp = FastMCP("postgres-mcp")
@@ -276,7 +276,7 @@ If there is no hypothetical index, you can pass an empty list.""",
 # Query function declaration without the decorator - we'll add it dynamically based on access mode
 async def execute_sql(
     sql: str = Field(description="SQL to run", default="all"),
-    pageSize: int = Field(
+    page_size: int = Field(
         description=f"Number of rows to return (1-{config.max_page_size}",
         default=config.default_page_size,
         ge=1,
@@ -294,7 +294,7 @@ async def execute_sql(
         rows = await sql_driver.execute_query(
             sql,  # type: ignore
             params=parameters if parameters else None,
-            page_size=pageSize,
+            page_size=page_size,
             offset=offset,
         )
         if rows is None:
