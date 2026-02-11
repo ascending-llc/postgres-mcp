@@ -256,15 +256,20 @@ class SqlDriver:
             raise e
 
     def get_wire_size(self, data: list[dict[str, Any]]) -> int:
+        """Calculates exact bytes of the JSON-serialized data including datetimes."""
+
         def json_serial(obj: Any) -> str:
-            """JSON serializer for objects not handled by default json package"""
+            """JSON serializer that converts any non-serializable object to string.
+
+            This is only used for wire size calculation, so we prioritize
+            robustness over perfect type preservation.
+            """
             if isinstance(obj, (datetime, date)):
                 return obj.isoformat()
-            raise TypeError(f"Type {type(obj)} not serializable")
 
-        """Calculates exact bytes of the JSON-serialized data including datetimes."""
+            return str(obj)
+
         buffer = io.StringIO()
-        # Add 'default=json_serial' to handle the PostgreSQL timestamps
         json.dump(data, buffer, default=json_serial)
         return len(buffer.getvalue().encode("utf-8"))
 
