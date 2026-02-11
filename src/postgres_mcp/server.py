@@ -292,7 +292,7 @@ async def execute_sql(
     try:
         sql_driver = await sql_driver_module.get_sql_driver()
         rows = await sql_driver.execute_query(
-            sql, # type: ignore
+            sql,  # type: ignore
             params=parameters if parameters else None,
             page_size=pageSize,
             offset=offset,

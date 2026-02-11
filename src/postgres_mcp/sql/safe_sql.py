@@ -991,7 +991,7 @@ class SafeSqlDriver(SqlDriver):
         # Use configured default if page_size not specified
         if page_size is None:
             page_size = config.default_page_size
-        
+
         self._validate(query)
 
         # NOTE: Always force readonly=True in SafeSqlDriver regardless of what was passed

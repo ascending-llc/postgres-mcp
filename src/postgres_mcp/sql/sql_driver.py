@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 def _has_limit_or_offset(query: str) -> bool:
     """Check if SQL query has LIMIT or OFFSET (case-insensitive word boundary check)."""
     import re
+
     # Use word boundaries to avoid matching within identifiers
     # This handles 95% of cases correctly
-    pattern = r'\b(LIMIT|OFFSET)\b'
+    pattern = r"\b(LIMIT|OFFSET)\b"
     return bool(re.search(pattern, query, re.IGNORECASE))
-
 
 
 def obfuscate_password(text: str | None) -> str | None:
@@ -228,7 +228,9 @@ class SqlDriver:
                 pool = await self.conn.pool_connect()
                 async with pool.connection() as connection:
                     return await self._execute_with_connection(
-                        connection, query, params,
+                        connection,
+                        query,
+                        params,
                         force_readonly=force_readonly,
                         page_size=page_size,
                         offset=offset,
@@ -236,7 +238,9 @@ class SqlDriver:
             else:
                 # Direct connection approach
                 return await self._execute_with_connection(
-                    self.conn, query, params,
+                    self.conn,
+                    query,
+                    params,
                     force_readonly=force_readonly,
                     page_size=page_size,
                     offset=offset,
@@ -250,7 +254,7 @@ class SqlDriver:
                 self.conn = None
 
             raise e
-        
+
     def get_wire_size(self, data: list[dict[str, Any]]) -> int:
         def json_serial(obj: Any) -> str:
             """JSON serializer for objects not handled by default json package"""
@@ -264,8 +268,9 @@ class SqlDriver:
         json.dump(data, buffer, default=json_serial)
         return len(buffer.getvalue().encode("utf-8"))
 
-
-    async def _execute_with_connection(self, connection, query, params, force_readonly, page_size: int | None = None, offset: int = 0) -> Optional[List[RowResult]]:
+    async def _execute_with_connection(
+        self, connection, query, params, force_readonly, page_size: int | None = None, offset: int = 0
+    ) -> Optional[List[RowResult]]:
         """Execute query with the given connection and apply pagination."""
 
         if page_size is None:
@@ -284,7 +289,7 @@ class SqlDriver:
                     # Remove trailing semicolon if present (we'll add it back later)
                     query_trimmed = query.rstrip().rstrip(";")
                     had_semicolon = query.rstrip().endswith(";")
-                    
+
                     # Use proper SQL parsing to check for existing LIMIT/OFFSET
                     if not _has_limit_or_offset(query_trimmed):
                         # Safe to add pagination
@@ -297,7 +302,7 @@ class SqlDriver:
                         paginated_query = query_trimmed
                         if had_semicolon:
                             paginated_query += ";"
-                            
+
                 if params:
                     await cursor.execute(paginated_query, params)
                 else:
@@ -326,17 +331,17 @@ class SqlDriver:
                     transaction_started = False
 
                 result = [SqlDriver.RowResult(cells=dict(row)) for row in rows]
-                
+
                 wire_size_bytes: int = self.get_wire_size([r.cells for r in result])
 
                 payload_size_mb = wire_size_bytes / (1024 * 1024)
-                
+
                 if payload_size_mb > config.max_payload_size_mb:
                     raise ValueError(
                         f"Query result payload too large: {payload_size_mb:.2f}MB exceeds maximum allowed size of {config.max_payload_size_mb}MB. "
                         f"Please refine your query to return less data, use pagination (LIMIT/OFFSET), or filter results."
                     )
-                
+
                 return result
 
         except Exception as e:
