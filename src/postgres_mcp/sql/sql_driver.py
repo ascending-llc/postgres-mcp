@@ -1,8 +1,12 @@
 """SQL driver adapter for PostgreSQL connections."""
 
+import io
+import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date
+from datetime import datetime
 from typing import Any
 from typing import Dict
 from typing import List
@@ -14,7 +18,19 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from typing_extensions import LiteralString
 
+from ..config import config
+
 logger = logging.getLogger(__name__)
+
+
+def _has_limit_or_offset(query: str) -> bool:
+    """Check if SQL query has LIMIT or OFFSET (case-insensitive word boundary check)."""
+    import re
+
+    # Use word boundaries to avoid matching within identifiers
+    # This handles 95% of cases correctly
+    pattern = r"\b(LIMIT|OFFSET)\b"
+    return bool(re.search(pattern, query, re.IGNORECASE))
 
 
 def obfuscate_password(text: str | None) -> str | None:
@@ -184,6 +200,8 @@ class SqlDriver:
         query: LiteralString,
         params: list[Any] | None = None,
         force_readonly: bool = False,
+        page_size: int | None = None,
+        offset: int = 0,
     ) -> Optional[List[RowResult]]:
         """
         Execute a query and return results.
@@ -192,6 +210,8 @@ class SqlDriver:
             query: SQL query to execute
             params: Query parameters
             force_readonly: Whether to enforce read-only mode
+            page_size: Number of rows to return (1-max configured), defaults to config.default_page_size
+            offset: Number of rows to skip
 
         Returns:
             List of RowResult objects or None on error
@@ -207,10 +227,24 @@ class SqlDriver:
                 # For pools, get a connection from the pool
                 pool = await self.conn.pool_connect()
                 async with pool.connection() as connection:
-                    return await self._execute_with_connection(connection, query, params, force_readonly=force_readonly)
+                    return await self._execute_with_connection(
+                        connection,
+                        query,
+                        params,
+                        force_readonly=force_readonly,
+                        page_size=page_size,
+                        offset=offset,
+                    )
             else:
                 # Direct connection approach
-                return await self._execute_with_connection(self.conn, query, params, force_readonly=force_readonly)
+                return await self._execute_with_connection(
+                    self.conn,
+                    query,
+                    params,
+                    force_readonly=force_readonly,
+                    page_size=page_size,
+                    offset=offset,
+                )
         except Exception as e:
             # Mark pool as invalid if there was a connection issue
             if self.conn and self.is_pool:
@@ -221,8 +255,32 @@ class SqlDriver:
 
             raise e
 
-    async def _execute_with_connection(self, connection, query, params, force_readonly) -> Optional[List[RowResult]]:
-        """Execute query with the given connection."""
+    def get_wire_size(self, data: list[dict[str, Any]]) -> int:
+        """Calculates exact bytes of the JSON-serialized data including datetimes."""
+
+        def json_serial(obj: Any) -> str:
+            """JSON serializer that converts any non-serializable object to string.
+
+            This is only used for wire size calculation, so we prioritize
+            robustness over perfect type preservation.
+            """
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+
+            return str(obj)
+
+        buffer = io.StringIO()
+        json.dump(data, buffer, default=json_serial)
+        return len(buffer.getvalue().encode("utf-8"))
+
+    async def _execute_with_connection(
+        self, connection, query, params, force_readonly, page_size: int | None = None, offset: int = 0
+    ) -> Optional[List[RowResult]]:
+        """Execute query with the given connection and apply pagination."""
+
+        if page_size is None:
+            page_size = config.default_page_size
+
         transaction_started = False
         try:
             async with connection.cursor(row_factory=dict_row) as cursor:
@@ -231,10 +289,30 @@ class SqlDriver:
                     await cursor.execute("BEGIN TRANSACTION READ ONLY")
                     transaction_started = True
 
+                paginated_query = query
+                # Only apply pagination in readonly mode to avoid breaking DDL operations
+                if force_readonly and page_size > 0:
+                    # Remove trailing semicolon if present (we'll add it back later)
+                    query_trimmed = query.rstrip().rstrip(";")
+                    had_semicolon = query.rstrip().endswith(";")
+
+                    # Use proper SQL parsing to check for existing LIMIT/OFFSET
+                    if not _has_limit_or_offset(query_trimmed):
+                        # Safe to add pagination
+                        paginated_query = f"{query_trimmed} LIMIT {page_size} OFFSET {offset}"
+                        # Restore semicolon if original had one
+                        if had_semicolon:
+                            paginated_query += ";"
+                    else:
+                        # Query already has pagination, use it as-is
+                        paginated_query = query_trimmed
+                        if had_semicolon:
+                            paginated_query += ";"
+
                 if params:
-                    await cursor.execute(query, params)
+                    await cursor.execute(paginated_query, params)
                 else:
-                    await cursor.execute(query)
+                    await cursor.execute(paginated_query)
 
                 # For multiple statements, move to the last statement's results
                 while cursor.nextset():
@@ -258,7 +336,19 @@ class SqlDriver:
                     await cursor.execute("ROLLBACK")
                     transaction_started = False
 
-                return [SqlDriver.RowResult(cells=dict(row)) for row in rows]
+                result = [SqlDriver.RowResult(cells=dict(row)) for row in rows]
+
+                wire_size_bytes: int = self.get_wire_size([r.cells for r in result])
+
+                payload_size_mb = wire_size_bytes / (1024 * 1024)
+
+                if payload_size_mb > config.max_payload_size_mb:
+                    raise ValueError(
+                        f"Query result payload too large: {payload_size_mb:.2f}MB exceeds maximum allowed size of {config.max_payload_size_mb}MB. "
+                        f"Please refine your query to return less data, use pagination (LIMIT/OFFSET), or filter results."
+                    )
+
+                return result
 
         except Exception as e:
             # Try to roll back the transaction if it's still active

@@ -11,15 +11,22 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import mcp.types as types
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic import validate_call
 
+# Load environment variables before importing local modules that may use them
+load_dotenv()
+
+# ruff: noqa: E402
 from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
 from .artifacts import ErrorResult
 from .artifacts import ExplainPlanArtifact
+from .config import config
 from .database_health import DatabaseHealthTool
 from .database_health import HealthType
 from .explain import ExplainPlanTool
@@ -38,7 +45,14 @@ from .utils import sql_driver as sql_driver_module  # Import the module to acces
 from .utils.url import fix_connection_url
 
 # Initialize FastMCP with default settings
-mcp = FastMCP("postgres-mcp")
+
+
+mcp = FastMCP(
+    "postgres-mcp",
+    transport_security=TransportSecuritySettings(
+        allowed_hosts=config.allowed_hosts,
+    ),
+)
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"
@@ -270,11 +284,27 @@ If there is no hypothetical index, you can pass an empty list.""",
 # Query function declaration without the decorator - we'll add it dynamically based on access mode
 async def execute_sql(
     sql: str = Field(description="SQL to run", default="all"),
+    page_size: int = Field(
+        description=f"Number of rows to return (1-{config.max_page_size}",
+        default=config.default_page_size,
+        ge=1,
+        le=config.max_page_size,
+    ),
+    offset: int = Field(description="Number of rows to skip for pagination", default=0, ge=0),
+    parameters: list[str | int | float | bool | None] = Field(
+        description="Optional array of parameters for parameterized queries",
+        default_factory=list,
+    ),
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
         sql_driver = await sql_driver_module.get_sql_driver()
-        rows = await sql_driver.execute_query(sql)  # type: ignore
+        rows = await sql_driver.execute_query(
+            sql,  # type: ignore
+            params=parameters if parameters else None,
+            page_size=page_size,
+            offset=offset,
+        )
         if rows is None:
             return format_text_response("No results")
         return format_text_response(list([r.cells for r in rows]))
@@ -460,11 +490,11 @@ async def main():
 
     # Add the query tool with a description appropriate to the access mode
     if sql_driver_module.current_access_mode == AccessMode.UNRESTRICTED:
-        mcp.add_tool(execute_sql, description="Execute any SQL query")
+        mcp.add_tool(execute_sql, description="Execute any SQL query with pagination support")
     else:
         mcp.add_tool(
             execute_sql,
-            description="Execute a read-only SQL query",
+            description="Execute a read-only SQL query with pagination support",
             annotations=ToolAnnotations(
                 title="Execute SQL (Read-Only)",
                 readOnlyHint=True,
