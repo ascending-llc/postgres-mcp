@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import mcp.types as types
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic import validate_call
@@ -44,7 +45,10 @@ from .utils import sql_driver as sql_driver_module  # Import the module to acces
 from .utils.url import fix_connection_url
 
 # Initialize FastMCP with default settings
-mcp = FastMCP("postgres-mcp")
+
+mcp = FastMCP("postgres-mcp", transport_security=TransportSecuritySettings(
+    allowed_hosts=config.allowed_hosts,
+))
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"

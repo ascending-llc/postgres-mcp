@@ -42,6 +42,12 @@ class Config:
                 )
         except ValueError as e:
             raise ValueError(f"Invalid POSTGRES_MCP_DEFAULT_PAGE_SIZE value '{default_page_size_str}': {e}") from e
+        
+        allowed_hosts_str = os.getenv("POSTGRES_MCP_ALLOWED_HOSTS", "localhost,127.0.0.1")
+        try:
+            self._allowed_hosts = [host.strip() for host in allowed_hosts_str.split(",")]
+        except Exception as e:
+            raise ValueError(f"Invalid POSTGRES_MCP_ALLOWED_HOSTS value '{allowed_hosts_str}': {e}") from e
 
     @property
     def max_page_size(self) -> int:
@@ -57,6 +63,11 @@ class Config:
     def max_payload_size_mb(self) -> int:
         """Get the maximum allowed payload size in MB."""
         return self._max_payload_size_mb
+    
+    @property
+    def allowed_hosts(self) -> list[str]:
+        """Get the list of allowed hosts."""
+        return self._allowed_hosts
 
     def reload(self):
         """Reload configuration from environment variables."""
