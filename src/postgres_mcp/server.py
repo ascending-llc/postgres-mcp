@@ -46,10 +46,13 @@ from .utils.url import fix_connection_url
 
 # Initialize FastMCP with default settings
 
-print('FUCK YOU', config.allowed_hosts)
-mcp = FastMCP("postgres-mcp", transport_security=TransportSecuritySettings(
-    allowed_hosts=config.allowed_hosts,
-))
+
+mcp = FastMCP(
+    "postgres-mcp",
+    transport_security=TransportSecuritySettings(
+        allowed_hosts=config.allowed_hosts,
+    ),
+)
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"
