@@ -43,7 +43,7 @@ class Config:
         except ValueError as e:
             raise ValueError(f"Invalid POSTGRES_MCP_DEFAULT_PAGE_SIZE value '{default_page_size_str}': {e}") from e
         
-        allowed_hosts_str = os.getenv("POSTGRES_MCP_ALLOWED_HOSTS", "localhost,127.0.0.1")
+        allowed_hosts_str = os.getenv("POSTGRES_MCP_ALLOWED_HOSTS", "localhost,localhost:*,127.0.0.1")
         try:
             self._allowed_hosts = [host.strip() for host in allowed_hosts_str.split(",")]
         except Exception as e:
